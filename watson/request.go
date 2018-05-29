@@ -121,7 +121,9 @@ func (c *Client) MakeRequest(method string, path string, body io.Reader, header 
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(c.Creds.Username, c.Creds.Password)
+	if c.Creds.Username != "" && c.Creds.Password != "" {
+		req.SetBasicAuth(c.Creds.Username, c.Creds.Password)
+	}
 	for key := range header {
 		req.Header.Set(key, header[key][0])
 	}

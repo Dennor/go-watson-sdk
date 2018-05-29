@@ -23,6 +23,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/liviosoares/go-watson-sdk/watson"
@@ -33,24 +34,24 @@ type Client struct {
 	watsonClient *watson.Client
 }
 
-const defaultMajorVersion = "v2"
-const defaultMinorVersion = "2015-12-02"
+const defaultMajorVersion = "v3"
+const defaultMinorVersion = "2018-03-19"
 const defaultUrl = "https://gateway.watsonplatform.net/visual-recognition-beta/api"
 
 // Connects to instance of Watson Concept Insights service
 func NewClient(cfg watson.Config) (Client, error) {
-	ci := Client{version: "/" + defaultMajorVersion}
+	version := cfg.Version
+	if version == "" {
+		version = defaultMajorVersion
+	}
+	ci := Client{version: "/" + version}
 	if len(cfg.Credentials.ServiceName) == 0 {
 		cfg.Credentials.ServiceName = "visual_recognition"
 	}
 	if len(cfg.Credentials.Url) == 0 {
 		cfg.Credentials.Url = defaultUrl
 	}
-	client, err := watson.NewClient(cfg.Credentials)
-	if err != nil {
-		return Client{}, err
-	}
-	ci.watsonClient = client
+	ci.watsonClient = &watson.Client{Creds: cfg.Credentials}
 	return ci, nil
 }
 
@@ -147,8 +148,8 @@ type ClassifierResult struct {
 }
 
 type ImageResult struct {
-	Image  string            `json:"image,omitempty"`
-	Scores []ClassifierScore `json:"scores,omitempty"`
+	Image       string            `json:"image,omitempty"`
+	Classifiers []ClassifierScore `json:"classifiers,omitempty"`
 }
 
 type ClassifierScore struct {
@@ -157,7 +158,16 @@ type ClassifierScore struct {
 	// Classifier id
 	Id string `json:"classifier_id,omitempty"`
 	// Score of the classifier on the input images.
+	Classes []ClassScore `json:"classes,omitempty"`
+}
+
+type ClassScore struct {
+	// Class name of the class
+	Class string `json:"class,omitempty"`
+	// Score confidence score
 	Score float64 `json:"score,omitempty"`
+	// TypeHierarchy knowledge graph
+	TypeHierarchy string `json:"type_hierarchy,omitempty"`
 }
 
 // Calls 'POST /v2/classify' to classify one or more images.
@@ -171,18 +181,12 @@ type ClassifierScore struct {
 func (c Client) Classify(upload io.Reader, classifiers []string) (ClassifierResult, error) {
 	q := url.Values{}
 	q.Set("version", defaultMinorVersion)
+	q.Set("api_key", c.watsonClient.Creds.ApiKey)
 
 	buf := &bytes.Buffer{}
 	w := multipart.NewWriter(buf)
 	if len(classifiers) > 0 {
-		ids := struct {
-			Ids []string `json:"classifier_ids,omitempty"`
-		}{Ids: classifiers}
-		classifiers_json, err := json.Marshal(ids)
-		if err != nil {
-			return ClassifierResult{}, err
-		}
-		w.WriteField("classifier_ids", string(classifiers_json))
+		q.Set("classifier_ids", strings.Join(classifiers, ","))
 	}
 	// positive  examples
 	part, err := w.CreateFormFile("images_file", "file.jpg")
